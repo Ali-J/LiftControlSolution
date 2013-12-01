@@ -7,18 +7,21 @@ using System.ComponentModel;
 
 namespace LiftClass
 {
-
     // ************* LiftMoveArgs class **************
     // Extension of EventArgs class to contain additional
     // arguments applicable for a Lift movement
     public class LiftMoveArgs : EventArgs
     {
         public int LiftHeight { get; set; }
+        public int LiftFloor { get; set; }
+        public string LiftDirection { get; set; }
 
         // Constructor
-        public LiftMoveArgs(int Height)
+        public LiftMoveArgs(int Height, int Floor, string Direction)
         {
             LiftHeight = Height;
+            LiftFloor = Floor;
+            LiftDirection = Direction;
         }
     }
 
@@ -31,48 +34,6 @@ namespace LiftClass
     // Create delegate for sending Floor request to local
     // lists when added to central list
     public delegate void RequestAddedDel(object sender, EventArgs e);
-
-    // ************* AddFloorDel Delegate ***************
-    // Create delegate for adding floors to the static
-    public delegate void AddFloorDel(object sender, EventArgs e);
-
-    // *************** Floors Class ****************
-    // Class defnied to handle addition of floors
-    // and their properties
-    public class Floors
-    {
-        // Static to track the number of floors addressable by all lifts
-        protected static int TotalNumberOfFloors = 0;
-
-        // ************ AddFloorEvent Event ***********
-        // New event for when the first floor request is made
-        public event AddFloorDel AddFloorEvent;
-        // Invoke the FloorReqEvent
-        protected virtual void OnAddFloorEvent(EventArgs e)
-        {
-            if (AddFloorEvent != null)
-                AddFloorEvent(this, e);
-        }
-
-        // Constructor to add additional floor object and asscociated properties
-        public Floors()
-        {
-            // Increment static Floor count that can be accessed publicly
-            TotalNumberOfFloors++;
-        }
-
-        // ************* GetFloorNumber method ***************
-        // Simple class to be able to read the number of floors
-        // that have been created.
-        public static int GetFloorNumber()
-        {
-            // Return number of total floors
-            return TotalNumberOfFloors;
-        }
-
-        // insert metods into here to create additional buttons on lifts
-        // and on floors themselves.
-    }
 
     // ***************** FloorRequestList class *******************
     // Public list class made up of Tuples to handle floor requests
@@ -87,24 +48,12 @@ namespace LiftClass
         // ************ FloorReqEvent Event ***********
         // New event for when a floor request is made
         public event RequestAddedDel FloorReqEvent;
-        // Invoke the FloorReqEvent
+
         protected virtual void OnFloorReqEvent(EventArgs e)
         {
             if (FloorReqEvent != null)
             {
                 FloorReqEvent(this, e);
-            }
-        }
-
-        // ************ InitReqEvent Event ***********
-        // New event for when the first floor request is made
-        public event RequestAddedDel InitReqEvent;
-        // Invoke the FloorReqEvent
-        protected virtual void OnInitReqEvent(EventArgs e)
-        {
-            if (InitReqEvent != null)
-            {
-                InitReqEvent(this, e);
             }
         }
 
@@ -122,10 +71,7 @@ namespace LiftClass
             // from the lifts shall be called by invoking an event saying
             // an event has been added
             OnFloorReqEvent(new EventArgs());
-            if (this.Count == 1)
-            {
-                OnInitReqEvent(new EventArgs());
-            }
+
         }
 
         // ************** RemRequest Method ****************
@@ -167,10 +113,26 @@ namespace LiftClass
                     // variabel CurrentDirReq
                     var CurrentDirReq = this[index].Item2;
 
+                    // If CurrDirection == still then the lift is not answering 
+                    // any requests currently and so can pick up the first
+                    // request in the list and all other matching requests
+                    if (CurrDirection == "Still")
+                    {
+                        if (CurrentDirReq == this[0].Item2)
+                        {
+                            // Return floor number and direction for request
+                            // to be answered
+                            var Floor = this[index].Item1;
+                            var Direction = this[index].Item2;
+                            RequestRet = new Tuple<int, string>(Floor, Direction);
+                            break;
+                        }
+                    }
+
                     // If lift is answering a request already, then check to see
                     // current request in list is for the same direction as is 
                     // being answered already
-                    if (CurrDirection == CurrentDirReq)
+                    else if (CurrDirection == CurrentDirReq)
                     {
                         // If direction does match that of the lift being travelled
                         // then check to see if that floor has been passed already
@@ -225,34 +187,38 @@ namespace LiftClass
         protected int CurrFloorNum;
         protected int CurrHeight;
         protected string CurrDirection;
+        protected string CurrStatus;
         // Variable to determine which floor lift will stop at next
-        protected int IntendedHeight;
+        protected int IntendedFloor;
         // Create tuple list for reference to instance of central list
         protected FloorRequestList<int, string> Req1;
         // Create tuple list for storing of local requests
         protected FloorRequestList<int, string> LocalFlr;
 
+        private BackgroundWorker MovementThread = new BackgroundWorker();
 
         // ************ InitReqEvent Event ***********
         // New event for when the first floor request is made
-        public event RequestAddedDel InitReqEvent;
-        // Invoke the FloorReqEvent
-        protected virtual void OnInitReqEvent(EventArgs e)
+        public event DoWorkEventHandler InitReqEvent;
+
+        public virtual void OnInitReqEvent(DoWorkEventArgs e)
         {
             if (InitReqEvent != null)
+            {
                 InitReqEvent(this, e);
+            }
         }
 
         // ************ LiftMoveEvent Event ***********
         // New event for when the first floor request is made
         public event LiftMoveDel<LiftMoveArgs> LiftMoveEvent;
-        // Invoke the FloorReqEvent
+
         protected virtual void OnLiftMoveEvent(LiftMoveArgs e)
         {
             if (LiftMoveEvent != null)
                 LiftMoveEvent(this, e);
         }
-
+            
         // Constructor class intialises all variables to zero/null/still
         // this set the lift to a starting position of the ground floor and
         // not moving
@@ -264,7 +230,8 @@ namespace LiftClass
             CurrFloorNum = 0;
             CurrHeight = 0;
             CurrDirection = "Still";
-            IntendedHeight = 0;
+            CurrStatus = "NotMoving";
+            IntendedFloor = 0;
             // Local list for storing Floor requests being addressed
             // by this lift and request Tuple for handling request created
             LocalFlr = new FloorRequestList<int, string>();
@@ -277,14 +244,26 @@ namespace LiftClass
             // If a local request is add then the GetIntended height method
             // needs to be run as if the new requested floor is before the previously
             // next request floor then the intended height will need to be changed
-            LocalFlr.FloorReqEvent += (Sender, e) => GetIntendedHeight();
+            LocalFlr.FloorReqEvent += (Sender, e) => GetIntendedFloor();
 
             // When the first request is added to the local list, then the 
             // move lift method shall be initiated with an InitReqEvent Event
             // This method will continue to loop untill all requests have been answered
-            LocalFlr.InitReqEvent += (Sender, e) => LiftMove();
+            MovementThread.WorkerSupportsCancellation = true;
+            MovementThread.WorkerReportsProgress = true;
+
+            MovementThread.DoWork += new DoWorkEventHandler(LiftMove);
+            MovementThread.ProgressChanged += new ProgressChangedEventHandler(MovementThread_ProgressChanged);
+
+            InitReqEvent += (Sender, e) => this.MovementThread.RunWorkerAsync();
         }
 
+        // Use the process changed method from the backgroud worker thread
+        // to keep the lift panel updated with the lifts location.
+        private void MovementThread_ProgressChanged(object sender, ProgressChangedEventArgs e)
+        {
+            OnLiftMoveEvent(new LiftMoveArgs(e.ProgressPercentage, CurrFloorNum, CurrDirection));
+        }
 
         // ************** GetFloorRequests Method ****************
         // Method to get floor requests from main list and to save them
@@ -295,25 +274,6 @@ namespace LiftClass
             var FloorNumReq = 0;
             var DirecReq = "";
 
-            // If CurrDirection == still then the lift is not answering 
-            // any requests currently and so can pick up the first
-            // request in the list
-            if (CurrDirection == "Still" & Req1.Count > 0)
-            {
-                // Return floor number and direction for request
-                // to be answered
-                FloorNumReq = Req1[0].Item1;
-                DirecReq = Req1[0].Item2;
-                // Change CurrDirection of lift to that of the first reqest
-                CurrDirection = Req1[0].Item2;
-                // Change current floor depending on direction to that
-                // which enables the lift to pick up all requests in that direction
-                if (CurrDirection == "Down")
-                    CurrFloorNum = Floors.GetFloorNumber() + 1;
-                else
-                    CurrFloorNum = 0;
-            }
-
             // If Direction is null (i.e. not a valid request) then do not loop
             while (Req1.ReturnRequest(CurrFloorNum, CurrDirection).Item2 != null)
             {
@@ -323,6 +283,13 @@ namespace LiftClass
                 // Add any request relevant to local list in order they can be
                 // answerd by the lift created
                 LocalFlr.AddRequest(FloorNumReq, DirecReq);
+                if (LocalFlr.Count == 1) ////& CurrDirection == "Still")
+                {
+                    if (MovementThread.IsBusy != true)
+                    {
+                        MovementThread.RunWorkerAsync();
+                    }
+                }
                 // Then remove request from main list in order that it doesn't
                 // get picked up mutliple times.
                 Req1.RemRequest(FloorNumReq, DirecReq);
@@ -331,19 +298,19 @@ namespace LiftClass
 
         // ************** GetLiftData Method ****************
         // Return Floor and direction of lifts current status
-        public Tuple<int, string> GetLiftData()
+        public Tuple<int, string, string> GetLiftData()
         {
-            return new Tuple<int, string>(this.CurrHeight, this.CurrDirection);
+            return new Tuple<int, string, string>(this.CurrFloorNum, this.CurrDirection, this.CurrStatus);
         }
 
         // ************** GetIntendedHeight Method ****************
         // Determine which is the next floor to stop at accodring to height
         // i.e. the value to be stored to measure against the height of the lift
-        protected void GetIntendedHeight()
+        protected void GetIntendedFloor()
         {
             // Method to set intended height in relation to the floor 
             // being requested
-            IntendedHeight = LocalFlr[0].Item1 * 100;
+            IntendedFloor = LocalFlr[0].Item1;
         }
 
         // ************** AddLiftRequest Method ****************
@@ -361,8 +328,12 @@ namespace LiftClass
 
             // Check to see if request made once inside
             // the lift matches that of the direction of the lift already
+            // first checking if there are requests already in lical request
+            // list
             if (LocalFlr.Count > 0)
             {
+                // Check to see if direction request inside the lift
+                // matches that of the direction the lift was already traveling in
                 if (DirectionReq != LocalFlr[0].Item2)
                 {
                     // If not then simply add to the back of the requests
@@ -408,76 +379,112 @@ namespace LiftClass
                     }
                 }
             }
+            // if there are no request already in list then simply add to start
+            // of local requet list.
+            else 
+            {
+                // Then proceed as if it were a new request being added
+                // from the central list.
+                LocalFlr.AddRequest(FloorNumReq, DirectionReq);
+                if (MovementThread.IsBusy != true)
+                {
+                    MovementThread.RunWorkerAsync();
+                }
+                // Then remove request from main list in order that it doesn't
+                // get picked up mutliple times.
+                Req1.RemRequest(FloorNumReq, DirectionReq);
+            }
         }
 
+        // ************* UpdateFloorNumber Method ***************
+        // Method to update the floor number when lift passes past it
+        public void UpdateFloorNumber(int NewFloorNumber)
+        {
+            CurrFloorNum = NewFloorNumber;
+        }
+
+        // ************** LiftMove method ***********************
         // When the first request is added to the local list, then the 
         // move lift method shall be initiated with an InitReqEvent Event
         // This method will continue to loop untill all requests have been answered
-        protected void LiftMove()
+        private void LiftMove(object sender, DoWorkEventArgs e)
         {
+            BackgroundWorker worker = sender as BackgroundWorker;
+
             // Make sure there is at least 1 item in the floor request list.
             while (LocalFlr.Count > 0)
             {
-                // Set current direction to that of the request being handled
-                CurrDirection = LocalFlr[0].Item2;
-
-                // Sort List into either ascending or descending
-                // order depending on which direciton the requests
-                // are in. First if for requests heading up
-                if (CurrDirection == "Up")
+                if ((worker.CancellationPending == true))
                 {
-                    // Sort floor requests into ascending order so that they can be
-                    // addressed appropriately.
-                    LocalFlr.Sort((Sort, Asc) => Sort.Item1.CompareTo(Asc.Item1));
+                    e.Cancel = true;
+                    break;
                 }
-                else if (CurrDirection == "Down")
+                else
                 {
-                    // Sort floor requests into descending order so that they can be
-                    // addressed appropriately.
-                    LocalFlr.Sort((Sort, Desc) => Desc.Item1.CompareTo(Sort.Item1));
-                }
+                    // Set current direction to that of the request being handled
+                    CurrDirection = LocalFlr[0].Item2;
 
-                // Get the intended height of the lift in order the lift
-                // will know when to stop moving
-                GetIntendedHeight();
-
-                // If the floor request is to go up
-                if (IntendedHeight > CurrHeight)
-                {
-                    // Increment height until it's equal to the intended height
-                    while (CurrHeight != IntendedHeight)
+                    // Sort List into either ascending or descending
+                    // order depending on which direciton the requests
+                    // are in. First if for requests heading up
+                    if (CurrDirection == "Up")
                     {
-                        CurrHeight++;
-                        LiftMoveArgs TrackLift = new LiftMoveArgs(CurrHeight);
-                        Thread.Sleep(10);
+                        // Sort floor requests into ascending order so that they can be
+                        // addressed appropriately.
+                        LocalFlr.Sort((Sort, Asc) => Sort.Item1.CompareTo(Asc.Item1));
                     }
-                }
-                // If the floor request is to go down
-                else if (IntendedHeight < CurrHeight)
-                {
-                    // Decrement height until it's equal to the intended height
-                    while (CurrHeight != IntendedHeight & LocalFlr[0].Item2 != null)
+                    else if (CurrDirection == "Down")
                     {
-                        CurrHeight--;
-                        LiftMoveArgs TrackLift = new LiftMoveArgs(CurrHeight);
-                        Thread.Sleep(10);
+                        // Sort floor requests into descending order so that they can be
+                        // addressed appropriately.
+                        LocalFlr.Sort((Sort, Desc) => Desc.Item1.CompareTo(Sort.Item1));
                     }
-                }
-                // If the Lift is at the intended height then clear the lift request
-                // from the local request list.
-                if (IntendedHeight == CurrHeight)
-                {
-                    // Once at the intended height, set the current floor
-                    // number the floor proportional to the height
-                    CurrFloorNum = CurrHeight / 100;
-                    // Remove the request just answered from the
-                    // local request list
+
+                    // Get the intended floor of the lift in order the lift
+                    // will know when to stop moving
+                    GetIntendedFloor();
+
+                    // Change height until it's equal to the intended height
+                    while (CurrFloorNum != IntendedFloor & LocalFlr[0].Item2 != null)
+                    {
+                        // Variable to indicate when the lift is moving
+                        // and when it is still. Note this is different
+                        // from the CurrDirection variable as the lift could
+                        // still be intending to move upward for example, but 
+                        // it is simply answering a request on the way.
+                        CurrStatus = "Moving";
+
+                        // If the floor request is to go up
+                        if (IntendedFloor > CurrFloorNum)
+                        {
+                            CurrHeight++;
+                            Thread.Sleep(10);
+                        }
+                        // If the floor request is to go down
+                        else if (IntendedFloor < CurrFloorNum)
+                        {
+                            CurrHeight--;
+                            Thread.Sleep(10);
+                        }
+                        // Leep updating lits location for panel simulation
+                        worker.ReportProgress(CurrHeight);
+                    }
+
+                    // When the lift reaches the floor its request is responding
+                    // then it's status is set to not moving but it's direction
+                    // the same
+                    CurrStatus = "NotMoving";
+                    // Once the request has been answered then remove it
+                    // from the floor request list
                     LocalFlr.RemRequest(CurrFloorNum, CurrDirection);
+                    // Give final update upon reaching the floor the lift
+                    // is responding to
+                    worker.ReportProgress(CurrHeight);
                 }
+                // When LocalFlr.Count is not >0 then all requests have been answered
+                // and the direction of the lift will then be set to "still"
+                CurrDirection = "Still";
             }
-            // When LocalFlr.Count is not >0 then all requests have been answered
-            // and the direction of the lift will then be set to "still"
-            CurrDirection = "Still";
         }
     }
 }
@@ -492,3 +499,4 @@ namespace TestClass
         }
     }
 }
+

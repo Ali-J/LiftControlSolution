@@ -16,36 +16,13 @@ namespace LiftGUI
     {
         public Form1()
         {
-            InitializeComponent();
+            InitializeComponent();     
+        
         }
 
-        private void DownReqBtn2_Click(object sender, EventArgs e)
+        private void AddFlrBtn_Click(object sender, EventArgs e)
         {
-            var FloorNum = 2;
-            var FloorDirection = "Down";
 
-            Build1.OnAddReqEvent(FloorEventArgs, e);
-        }
-
-        private void UpReqBtn1_Click(object sender, EventArgs e)
-        {
-            var FloorNum = 1;
-            var FloorDirection = "Up";
-            FloorEventArgs FlorReq = new FloorEventArgs(FloorNum, FloorDirection);
-        }
-
-        private void DownReqBtn1_Click(object sender, EventArgs e)
-        {
-            var FloorNum = 1;
-            var FloorDirection = "Down";
-            FloorEventArgs FlorReq = new FloorEventArgs(FloorNum, FloorDirection);
-        }
-
-        private void UpReqBtn0_Click(object sender, EventArgs e)
-        {
-            var FloorNum = 0;
-            var FloorDirection = "Up";
-            FloorEventArgs FlorReq = new FloorEventArgs(FloorNum, FloorDirection);
         }
     }
 }
