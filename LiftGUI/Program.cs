@@ -716,8 +716,10 @@ namespace EventGenerator
                 LiftRef = null;
                 HitFloorButton();
                 Thread.Sleep(500);
+                // optional method to be used in conjunction with self
+                // test functionality.
                 //FindLift();
-                //HitLiftButton();
+                HitLiftButton();
             }
         }
 
