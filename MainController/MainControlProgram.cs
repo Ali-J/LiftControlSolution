@@ -49,7 +49,7 @@ namespace LiftClass
         // New event for when a floor request is made
         public event RequestAddedDel FloorReqEvent;
 
-        protected virtual void OnFloorReqEvent(EventArgs e)
+        public virtual void OnFloorReqEvent(EventArgs e)
         {
             if (FloorReqEvent != null)
             {
@@ -294,6 +294,30 @@ namespace LiftClass
                 // get picked up mutliple times.
                 Req1.RemRequest(FloorNumReq, DirecReq);
             }
+            if (LocalFlr.Count > 0)
+            {
+                // Set current direction to that of the request being handled
+                CurrDirection = LocalFlr[0].Item2;
+                // set intended floor to that of the request being handled
+                IntendedFloor = LocalFlr[0].Item1;
+
+                // Sort List into either ascending or descending
+                // order depending on which direciton the requests
+                // are in. First if for requests heading up
+                if (CurrDirection == "Up")
+                {
+                    // Sort floor requests into ascending order so that they can be
+                    // addressed appropriately.
+                    LocalFlr.Sort((Sort, Asc) => Sort.Item1.CompareTo(Asc.Item1));
+                }
+                else if (CurrDirection == "Down")
+                {
+                    // Sort floor requests into descending order so that they can be
+                    // addressed appropriately.
+                    LocalFlr.Sort((Sort, Desc) => Desc.Item1.CompareTo(Sort.Item1));
+                }
+            }
+
         }
 
         // ************** GetLiftData Method ****************
@@ -421,25 +445,6 @@ namespace LiftClass
                 }
                 else
                 {
-                    // Set current direction to that of the request being handled
-                    CurrDirection = LocalFlr[0].Item2;
-
-                    // Sort List into either ascending or descending
-                    // order depending on which direciton the requests
-                    // are in. First if for requests heading up
-                    if (CurrDirection == "Up")
-                    {
-                        // Sort floor requests into ascending order so that they can be
-                        // addressed appropriately.
-                        LocalFlr.Sort((Sort, Asc) => Sort.Item1.CompareTo(Asc.Item1));
-                    }
-                    else if (CurrDirection == "Down")
-                    {
-                        // Sort floor requests into descending order so that they can be
-                        // addressed appropriately.
-                        LocalFlr.Sort((Sort, Desc) => Desc.Item1.CompareTo(Sort.Item1));
-                    }
-
                     // Get the intended floor of the lift in order the lift
                     // will know when to stop moving
                     GetIntendedFloor();
@@ -447,6 +452,11 @@ namespace LiftClass
                     // Change height until it's equal to the intended height
                     while (CurrFloorNum != IntendedFloor & LocalFlr[0].Item2 != null)
                     {
+                        // Set current direction to that of the request being handled
+                        CurrDirection = LocalFlr[0].Item2;
+                        // set intended floor to that of the request being handled
+                        IntendedFloor = LocalFlr[0].Item1;
+
                         // Variable to indicate when the lift is moving
                         // and when it is still. Note this is different
                         // from the CurrDirection variable as the lift could
@@ -474,6 +484,8 @@ namespace LiftClass
                     // then it's status is set to not moving but it's direction
                     // the same
                     CurrStatus = "NotMoving";
+                    // Wait for 500 ms to simulate the lift answering that request
+                    Thread.Sleep(500);
                     // Once the request has been answered then remove it
                     // from the floor request list
                     LocalFlr.RemRequest(CurrFloorNum, CurrDirection);
@@ -484,6 +496,9 @@ namespace LiftClass
                 // When LocalFlr.Count is not >0 then all requests have been answered
                 // and the direction of the lift will then be set to "still"
                 CurrDirection = "Still";
+                // If Lift has answered all local floor request then go to central list
+                // to see if there are un-answered requests present
+                this.GetFloorRequests();
             }
         }
     }

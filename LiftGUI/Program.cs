@@ -686,15 +686,10 @@ namespace EventGenerator
         // is set True.
         public TestEventGenerator()
         {
-            // When the first request is added to the local list, then the 
-            // move lift method shall be initiated with an InitReqEvent Event
-            // This method will continue to loop untill all requests have been answered
+            // backgroun worker thred created to handle the work of the Event
+            // generator
             EventGenThread.WorkerSupportsCancellation = true;
-            //EventGenThread.WorkerReportsProgress = true;
-
             EventGenThread.DoWork += new DoWorkEventHandler(RunTestMethod);
-            //EventGenThread.ProgressChanged += new ProgressChangedEventHandler(EventGenThread_ProgressChanged);
-
             EventGenReqEvent += (Sender, e) => this.EventGenThread.RunWorkerAsync();
         }
 
